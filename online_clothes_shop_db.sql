@@ -78,8 +78,8 @@ CREATE  PROCEDURE `add_invoice_lines` (IN `id_invoice` BIGINT(20) UNSIGNED, IN `
     	FROM cart_item WHERE cart_id = (
             SELECT cart_id FROM cart WHERE cart_id = (
             	SELECT cart_id FROM orders WHERE order_id = id_order
-            )
-        );
+            ))
+                         AND deleted_at IS NULL;
         
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET finished = TRUE;
     OPEN cart_items_cursor;
@@ -271,7 +271,12 @@ CREATE  PROCEDURE `add_product_to_cart` (IN `id_product` BIGINT UNSIGNED, IN `pr
     END IF;
 
     -- Sprawdzenie, czy produkt, który chcemy dodać do koszyka znajduje się już w nim.
-    SELECT item_id INTO id_item FROM cart_item WHERE cart_id=id_cart AND product_id=id_product LIMIT 1;
+SELECT item_id
+INTO id_item
+FROM cart_item
+WHERE cart_id = id_cart
+  AND product_id = id_product
+  AND deleted_at IS NULL LIMIT 1;
 
     -- Jeśli tak, aktualizujemy tylko ilość danego produktu.
     IF id_item IS NOT NULL THEN
@@ -640,8 +645,8 @@ CREATE  FUNCTION `calculate_cart_total_value` (`id_order` BIGINT(20) UNSIGNED, `
     DECLARE products_cursor CURSOR FOR SELECT product_id, quantity FROM cart_item
     WHERE cart_id = (
     	SELECT cart_id FROM orders
-    	WHERE order_id = id_order
-	);    
+    	WHERE order_id = id_order)
+      AND deleted_at IS NULL;
     
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET finished = TRUE;
     
@@ -692,8 +697,10 @@ CREATE  FUNCTION `check_sellable_product_quantity` (`id_cart` BIGINT(20) UNSIGNE
     DECLARE id_product BIGINT;
     DECLARE cart_quantity INT;
     DECLARE stock_quantity INT;
-	DECLARE products_cursor CURSOR FOR SELECT product_id, quantity 
-    FROM cart_item WHERE cart_id=id_cart;
+	DECLARE products_cursor CURSOR FOR SELECT product_id, quantity
+                                       FROM cart_item
+                                       WHERE cart_id = id_cart
+                                         AND deleted_at IS NULL;
     
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET finished = TRUE;
     
@@ -1173,7 +1180,9 @@ DELIMITER ;
 DROP TRIGGER IF EXISTS `after_delete_cart_item`;
 DELIMITER $$
 CREATE TRIGGER `after_delete_cart_item` AFTER UPDATE ON `cart_item` FOR EACH ROW BEGIN
-	IF NEW.deleted_at IS NOT NULL THEN
+    IF OLD.deleted_at IS NULL
+	   AND NEW.deleted_at IS NOT NULL THEN
+
     	UPDATE cart SET item_count = item_count - 1 WHERE cart_id=NEW.cart_id;
     END IF;
 END
@@ -2562,7 +2571,25 @@ VIEW `v_inventory`  AS
 DROP TABLE IF EXISTS `v_order_details`;
 
 DROP VIEW IF EXISTS `v_order_details`;
-CREATE OR REPLACE ALGORITHM=UNDEFINED  SQL SECURITY DEFINER VIEW `v_order_details`  AS SELECT `o`.`order_id` AS `OrderID`, `vp`.`sku` AS `ProductSKU`, `ci`.`quantity` AS `Quantity`, `vp`.`net_price` AS `UnitPrice`, `vp`.`net_price`* `ci`.`quantity` AS `TotalCost` FROM (((`orders` `o` left join `cart` `ca` on(`o`.`cart_id` = `ca`.`cart_id`)) left join `cart_item` `ci` on(`ci`.`cart_id` = `ca`.`cart_id`)) join `v_product_details` `vp` on(`ci`.`product_id` = `vp`.`product_id`)) ORDER BY `o`.`updated_at` DESC ;
+CREATE
+OR REPLACE
+ALGORITHM = UNDEFINED
+SQL SECURITY DEFINER
+VIEW `v_order_details` AS
+SELECT `o`.`order_id`                     AS `OrderID`,
+       `vp`.`sku`                         AS `ProductSKU`,
+       `ci`.`quantity`                    AS `Quantity`,
+       `vp`.`net_price`                   AS `UnitPrice`,
+       `vp`.`net_price` * `ci`.`quantity` AS `TotalCost`
+FROM `orders` `o`
+         left join `cart` `ca`
+                   on `o`.`cart_id` = `ca`.`cart_id`
+         left join `cart_item` `ci`
+                   on `ci`.`cart_id` = `ca`.`cart_id`
+                       and ci.deleted_at IS NULL
+         join `v_product_details` `vp`
+              on `ci`.`product_id` = `vp`.`product_id`
+ORDER BY `o`.`updated_at` DESC;
 
 -- --------------------------------------------------------
 
