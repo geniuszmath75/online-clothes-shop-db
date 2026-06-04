@@ -364,6 +364,26 @@ with tab_akcje:
             else:
                 st.warning("Brak produktów w widoku v_product_details.")
 
+    with st.expander("Lista przewoźników"):
+        st.markdown("Wykorzystuje tabelę `shipping_providers`")
+        if st.button("Odśwież listę przewoźników"):
+            cursor.execute("SELECT * FROM shipping_providers LIMIT 100")
+            df = pd.DataFrame(cursor.fetchall())
+            if not df.empty:
+                st.dataframe(df, use_container_width=True)
+            else:
+                st.info("Brak przewoźników w bazie.")
+
+    with st.expander("Lista dostawców płatności"):
+        st.markdown("Wykorzystuje tabelę `payment_providers`")
+        if st.button("Odśwież listę dostawców płatności"):
+            cursor.execute("SELECT * FROM payment_providers LIMIT 100")
+            df = pd.DataFrame(cursor.fetchall())
+            if not df.empty:
+                st.dataframe(df, use_container_width=True)
+            else:
+                st.info("Brak dostawców płatności w bazie.")
+
 # sekcja panelu administracyjnego do zarzadzania uzytkownikami, rolami i bezpieczenstwem
 
 with tab_admin:
